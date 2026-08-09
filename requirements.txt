@@ -1,0 +1,5 @@
+black
+mypy
+pandas
+pandas-stubs
+pylint
