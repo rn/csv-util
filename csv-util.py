@@ -5,6 +5,7 @@
 from argparse import ArgumentParser
 import io
 import sys
+from typing import Optional
 
 import pandas as pd
 
@@ -30,6 +31,32 @@ def try_datetime(series: pd.Series, min_success_rate: float = 0.9) -> pd.Series:
     return series
 
 
+def comma_separated_list(value: str) -> Optional[list[str]]:
+    """Convert string to list"""
+    if value is None or value.strip() == "":
+        return None
+    return [item.strip() for item in value.split(",")]
+
+
+def select_columns(strings: list[str], columns: list[str]) -> list[str]:
+    """Return list of selected columns"""
+    selected: list[str] = []
+
+    for s in strings:
+        if s in columns:
+            # Direct name match
+            if s not in selected:
+                selected.append(s)
+        else:
+            try:
+                idx = int(s)
+                if 0 <= idx < len(columns) and columns[idx] not in selected:
+                    selected.append(columns[idx])
+            except ValueError:
+                pass
+    return selected
+
+
 def main():
     """Main entry point"""
     parser = ArgumentParser(
@@ -45,6 +72,13 @@ def main():
         choices=["csv", "txt", "tsv", "md"],
         default="txt",
     )
+    parser.add_argument(
+        "-c",
+        "--columns",
+        help="Select columns using a comma separated list. Elements can be column names of indices (starting as 0)",
+        type=comma_separated_list,
+        default=None,
+    )
 
     args = parser.parse_args()
 
@@ -56,6 +90,12 @@ def main():
     # Attempt to convert to datetime
     for col in df.columns:
         df[col] = try_datetime(df[col])
+
+    if args.columns is not None:
+        selected = select_columns(args.columns, df.columns.tolist())
+        if len(selected) == 0:
+            return
+        df = df[selected]
 
     # Output
     if args.format == "csv":
