@@ -9,6 +9,27 @@ import sys
 import pandas as pd
 
 
+def try_datetime(series: pd.Series, min_success_rate: float = 0.9) -> pd.Series:
+    """Try to convert a series to datetime; return converted series if it looks like dates."""
+    if not (
+        pd.api.types.is_object_dtype(series) or pd.api.types.is_string_dtype(series)
+    ):
+        return series
+
+    converted: pd.Series = pd.to_datetime(series, errors="coerce")
+
+    # Only accept if most non-null values successfully converted
+    success_rate: float = (
+        converted.notna().sum() / series.notna().sum()
+        if series.notna().sum() > 0
+        else 0
+    )
+
+    if success_rate >= min_success_rate:
+        return converted
+    return series
+
+
 def main():
     """Main entry point"""
     parser = ArgumentParser(
@@ -30,7 +51,11 @@ def main():
     if args.file == "-":
         args.file = io.StringIO(sys.stdin.read())
 
-    df = pd.read_csv(args.file)
+    df = pd.read_csv(args.file, skip_blank_lines=True)
+
+    # Attempt to convert to datetime
+    for col in df.columns:
+        df[col] = try_datetime(df[col])
 
     # Output
     if args.format == "csv":
