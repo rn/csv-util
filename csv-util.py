@@ -31,14 +31,14 @@ def try_datetime(series: pd.Series, min_success_rate: float = 0.9) -> pd.Series:
     return series
 
 
-def comma_separated_list(value: str) -> Optional[list[str]]:
+def args_comma_separated_list(value: str) -> Optional[list[str]]:
     """Convert string to list"""
     if value is None or value.strip() == "":
         return None
     return [item.strip() for item in value.split(",")]
 
 
-def select_columns(strings: list[str], columns: list[str]) -> list[str]:
+def cols_select(strings: list[str], columns: list[str]) -> list[str]:
     """Return list of selected columns"""
     selected: list[str] = []
 
@@ -65,19 +65,23 @@ def main():
     )
 
     parser.add_argument("file", metavar="FILE", help='Input file, use "-" for stdin.')
-    parser.add_argument(
+
+    filter_args = parser.add_argument_group("Filter arguments")
+    filter_args.add_argument(
+        "-c",
+        "--columns",
+        help="Select columns using a comma separated list. Elements can be column names of indices (starting as 0)",
+        type=args_comma_separated_list,
+        default=None,
+    )
+
+    out_args = parser.add_argument_group("Output arguments")
+    out_args.add_argument(
         "-f",
         "--format",
         help="Output format",
         choices=["csv", "txt", "tsv", "md"],
         default="txt",
-    )
-    parser.add_argument(
-        "-c",
-        "--columns",
-        help="Select columns using a comma separated list. Elements can be column names of indices (starting as 0)",
-        type=comma_separated_list,
-        default=None,
     )
 
     args = parser.parse_args()
@@ -91,13 +95,18 @@ def main():
     for col in df.columns:
         df[col] = try_datetime(df[col])
 
+    #
+    # Filtering
+    #
     if args.columns is not None:
-        selected = select_columns(args.columns, df.columns.tolist())
+        selected = cols_select(args.columns, df.columns.tolist())
         if len(selected) == 0:
             return
         df = df[selected]
 
+    #
     # Output
+    #
     if args.format == "csv":
         print(df.to_csv(index=False))
     elif args.format == "tsv":
