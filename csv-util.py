@@ -70,9 +70,23 @@ def main():
     filter_args.add_argument(
         "-c",
         "--columns",
-        help="Select columns using a comma separated list. Elements can be column names of indices (starting as 0)",
+        help="Select columns using a comma separated list. Elements can be column names or indices (starting as 0)",
         type=args_comma_separated_list,
         default=None,
+    )
+
+    trans_args = parser.add_argument_group("Transformation arguments")
+    trans_args.add_argument(
+        "--sort",
+        help="Sort csv file based on comma separated list of columns. Elements can be column names or indices (starting as 0)",
+        type=args_comma_separated_list,
+        default=None,
+    )
+    trans_args.add_argument(
+        "--sort-dir",
+        help="Sort direction. A list of 'a' (ascending) or 'd' (descending). Default ascending",
+        type=args_comma_separated_list,
+        default=["a"],
     )
 
     out_args = parser.add_argument_group("Output arguments")
@@ -100,9 +114,22 @@ def main():
     #
     if args.columns is not None:
         selected = cols_select(args.columns, df.columns.tolist())
-        if len(selected) == 0:
-            return
-        df = df[selected]
+        if len(selected) > 0:
+            df = df[selected]
+
+    #
+    # Transform
+    #
+    if args.sort is not None:
+        selected = cols_select(args.sort, df.columns.tolist())
+        if len(selected) > 0:
+            order = []
+            for i in range(len(selected)):
+                dir_value = (
+                    args.sort_dir[i] if i < len(args.sort_dir) else args.sort_dir[-1]
+                )
+                order.append("a" in dir_value)
+            df.sort_values(by=selected, ascending=order, inplace=True)
 
     #
     # Output
