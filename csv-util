@@ -9,6 +9,5 @@ if [ -L "$SOURCE" ]; then
 fi
 SCRIPT_DIR="$(cd -P "$(dirname "$SOURCE")" >/dev/null 2>&1 && pwd)"
 
-cd "$SCRIPT_DIR"
-source ./venv/bin/activate
-exec ./csv-util.py "$@"
+source "$SCRIPT_DIR"/venv/bin/activate
+exec "$SCRIPT_DIR"/csv-util.py "$@"
