@@ -135,6 +135,11 @@ def main():
         help="Re-sample on a time/date based column. Argument is <column>:<freq>, where 'freq' is accepted by pandas resample()",
         default=None,
     )
+    trans_args.add_argument(
+        "--pivot",
+        help="Create a pivot table. Argument is <rows>:<cols>:<vals>:<func>, where '<rows>' are the columns the rows in the pivot table are taking from, '<cols>' are the columns the columns in the pivot table are taken from, '<vals>' are the columns the values are taken from, and 'func' is the aggregation function.<rows>, <cols>, <vals> can be comma separated lists ",
+        default=None,
+    )
 
     out_args = parser.add_argument_group("Output arguments")
     out_args.add_argument(
@@ -184,6 +189,15 @@ def main():
     if args.sample is not None:
         col, freq = args.sample.split(":")
         df = df.resample(freq, on=col).last().reset_index()
+
+    if args.pivot is not None:
+        rows, cols, vals, func = args.pivot.split(":")
+        df = df.pivot_table(
+            index=rows.split(","),
+            columns=cols.split(","),
+            values=vals.split(","),
+            aggfunc=func,
+        ).reset_index()
 
     #
     # Output
