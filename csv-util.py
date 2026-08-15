@@ -4,6 +4,7 @@
 
 from argparse import ArgumentParser
 import io
+import re
 import sys
 from typing import Optional
 
@@ -57,6 +58,39 @@ def cols_select(strings: list[str], columns: list[str]) -> list[str]:
     return selected
 
 
+# Matches contains(Column, 'substring'[, case=True|False])
+_CONTAINS_RE = re.compile(
+    r"contains\(\s*(\w+)\s*,\s*('[^']*'|\"[^\"]*\")\s*(?:,\s*case\s*=\s*(True|False))?\s*\)"
+)
+
+# Matches bare dates like 2026-01-01, but not ones already quoted or glued
+# to other word characters.
+_DATE_RE = re.compile(r"(?<![\"'\w])\d{4}-\d{2}-\d{2}(?![\"'\w])")
+
+
+def filter_rows(df: pd.DataFrame, expr: str) -> pd.DataFrame:
+    """Filter dataframe rows using pandas query"""
+    # add quotes around dates so that query works
+    safe_expr = _DATE_RE.sub(lambda m: f"'{m.group(0)}'", expr)
+
+    # rewrite "contains" to an expression understood by "qeury"
+    def _rewrite_contains(match: "re.Match[str]") -> str:
+        column, substring, case = (
+            match.group(1),
+            match.group(2),
+            match.group(3) or "False",
+        )
+        return f"{column}.astype('string').str.contains({substring}, case={case}, na=False, regex=False)"
+
+    safe_expr = _CONTAINS_RE.sub(_rewrite_contains, safe_expr)
+
+    try:
+        return df.query(safe_expr, engine="python")
+    except Exception as exc:  # pandas raises several different error types
+        print(f"Error evaluating row filter '{expr}': {exc}", file=sys.stderr)
+        sys.exit(1)
+
+
 def main():
     """Main entry point"""
     parser = ArgumentParser(
@@ -72,6 +106,14 @@ def main():
         "--columns",
         help="Select columns using a comma separated list. Elements can be column names or indices (starting as 0)",
         type=args_comma_separated_list,
+        default=None,
+    )
+    filter_args.add_argument(
+        "-r",
+        "--rows",
+        help=(
+            "Filter rows using a boolean expression, e.g. 'Date > 2026-01-01 & Transaction >= 0.0'. Use 'contains(Column, 'text')' for substring match. This is a wrapper around pandas 'query()' "
+        ),
         default=None,
     )
 
@@ -116,6 +158,9 @@ def main():
         selected = cols_select(args.columns, df.columns.tolist())
         if len(selected) > 0:
             df = df[selected]
+
+    if args.rows is not None:
+        df = filter_rows(df, args.rows)
 
     #
     # Transform
