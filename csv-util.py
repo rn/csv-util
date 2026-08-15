@@ -130,6 +130,11 @@ def main():
         type=args_comma_separated_list,
         default=["a"],
     )
+    trans_args.add_argument(
+        "--sample",
+        help="Re-sample on a time/date based column. Argument is <column>:<freq>, where 'freq' is accepted by pandas resample()",
+        default=None,
+    )
 
     out_args = parser.add_argument_group("Output arguments")
     out_args.add_argument(
@@ -175,6 +180,10 @@ def main():
                 )
                 order.append("a" in dir_value)
             df.sort_values(by=selected, ascending=order, inplace=True)
+
+    if args.sample is not None:
+        col, freq = args.sample.split(":")
+        df = df.resample(freq, on=col).last().reset_index()
 
     #
     # Output
