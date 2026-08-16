@@ -91,6 +91,87 @@ def filter_rows(df: pd.DataFrame, expr: str) -> pd.DataFrame:
         sys.exit(1)
 
 
+_ALLOWED_AGG_FUNCS = {
+    "sum",
+    "mean",
+    "median",
+    "min",
+    "max",
+    "count",
+    "std",
+    "var",
+    "nunique",
+    "first",
+    "last",
+}
+
+
+def parse_agg_spec(specs: list[str], columns: list[str]) -> dict[str, tuple[str, str]]:
+    """Parse a list of 'column:function' strings into {out col: (column, function)}."""
+    agg_map: dict[str, tuple[str, str]] = {}
+
+    for spec in specs:
+        if ":" not in spec:
+            print(
+                f"Invalid aggregation '{spec}', expected COLUMN:FUNCTION "
+                f"(e.g. 'price:sum')",
+                file=sys.stderr,
+            )
+            sys.exit(1)
+
+        col_part, _, func_part = spec.partition(":")
+        func = func_part.strip().lower()
+
+        resolved = cols_select([col_part.strip()], columns)
+        if not resolved:
+            print(
+                f"Unknown column '{col_part}' in aggregation '{spec}'", file=sys.stderr
+            )
+            sys.exit(1)
+        col = resolved[0]
+
+        if func not in _ALLOWED_AGG_FUNCS:
+            print(
+                f"Unsupported aggregation function '{func}'. Choose from: {', '.join(sorted(_ALLOWED_AGG_FUNCS))}",
+                file=sys.stderr,
+            )
+            sys.exit(1)
+
+        # Build a unique output column name, e.g. price_sum, price_sum2, ...
+        out_name = f"{col}_{func}"
+        suffix = 1
+        base = out_name
+        while out_name in agg_map:
+            suffix += 1
+            out_name = f"{base}{suffix}"
+        agg_map[out_name] = (col, func)
+
+    return agg_map
+
+
+def aggregate(
+    df: pd.DataFrame, group_cols: Optional[list[str]], agg_specs: list[str]
+) -> pd.DataFrame:
+    """Group df by group_cols (if any) and apply column:function aggregations."""
+    agg_map = parse_agg_spec(agg_specs, df.columns.tolist())
+    named_aggs = {
+        name: pd.NamedAgg(column=col, aggfunc=func)
+        for name, (col, func) in agg_map.items()
+    }
+
+    if group_cols:
+        resolved_groups = cols_select(group_cols, df.columns.tolist())
+        if not resolved_groups:
+            print(f"No valid group-by columns found in {group_cols}", file=sys.stderr)
+            sys.exit(1)
+        result = df.groupby(resolved_groups, dropna=False).agg(**named_aggs)
+        return result.reset_index()
+
+    # No grouping: aggregate the whole dataframe into a single summary row.
+    values = {name: getattr(df[col], func)() for name, (col, func) in agg_map.items()}
+    return pd.DataFrame([values])
+
+
 def main():
     """Main entry point"""
     parser = ArgumentParser(
@@ -138,6 +219,21 @@ def main():
     trans_args.add_argument(
         "--pivot",
         help="Create a pivot table. Argument is <rows>:<cols>:<vals>:<func>, where '<rows>' are the columns the rows in the pivot table are taking from, '<cols>' are the columns the columns in the pivot table are taken from, '<vals>' are the columns the values are taken from, and 'func' is the aggregation function.<rows>, <cols>, <vals> can be comma separated lists ",
+        default=None,
+    )
+    trans_args.add_argument(
+        "--group",
+        help="Group rows by comma separated list of columns (names or indices) before aggregating. Requires --agg.",
+        type=args_comma_separated_list,
+        default=None,
+    )
+    trans_args.add_argument(
+        "--agg",
+        help=(
+            "Aggregate using a comma separated list of COLUMN:FUNCTION pairs, e.g. 'price:sum,price:mean'. Combine with --group-by to aggregate per group. Functions: "
+            + ", ".join(sorted(_ALLOWED_AGG_FUNCS))
+        ),
+        type=args_comma_separated_list,
         default=None,
     )
 
@@ -198,6 +294,13 @@ def main():
             values=vals.split(","),
             aggfunc=func,
         ).reset_index()
+
+    if args.group is not None and args.agg is None:
+        print("--group requires --agg to specify how to aggregate", file=sys.stderr)
+        sys.exit(1)
+
+    if args.agg is not None:
+        df = aggregate(df, args.group, args.agg)
 
     #
     # Output
