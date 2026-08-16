@@ -6,6 +6,7 @@ from argparse import ArgumentParser
 import io
 import re
 import sys
+import warnings
 from typing import Optional
 
 import pandas as pd
@@ -18,7 +19,12 @@ def try_datetime(series: pd.Series, min_success_rate: float = 0.9) -> pd.Series:
     ):
         return series
 
-    converted: pd.Series = pd.to_datetime(series, errors="coerce")
+    # This is a speculative conversion attempt run against every column.
+    # We may get warnings if there are no dates. Since we discrad in this
+    # case, just suppress warnings.
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore", UserWarning)
+        converted: pd.Series = pd.to_datetime(series, errors="coerce")
 
     # Only accept if most non-null values successfully converted
     success_rate: float = (
